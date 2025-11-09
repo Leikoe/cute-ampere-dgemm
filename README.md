@@ -1,5 +1,7 @@
 # CuTe Ampere DGEMM
 
+![DGEMM benchmark for square matrices on A100D](./bench.png)
+
 ## Requirements
 - CUDA TOOLKIT >= 12.9 (for nvcc and cublas)
 - cutlass `git clone https://github.com/NVIDIA/cutlass.git`
