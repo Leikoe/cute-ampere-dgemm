@@ -13,7 +13,7 @@ This repo doesn't work on RTX Ampere: "Note that GA10x GPUs do not include Tenso
 TESTED ON "A100 DRIVE":
 - 1140 Mhz (`nvidia-smi -q -d CLOCK` Clocks > SM, mine is downclocked don't worry about it)
 - 96 SMs
-- 384 Tensor cores (4 TC/SM), ampere (DC /!\) TC can do 16FMA/cycle
+- 384 Tensor cores (4 TC/SM), ampere (DC /!\\) TC can do 16FMA/cycle
 
 Theoretical flops: `1140*1e6 * 384 * 16*2 / 1e12 = 14 TFlops` (double)
 
