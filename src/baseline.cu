@@ -1,16 +1,3 @@
-// DGEMM NT: (M,K):(K,1) @ (N,K):(K,1) = (M,N):(1, M)        B is transposed for simplicity
-//
-// "Note that GA10x GPUs do not include Tensor Core acceleration for
-// double-precision (FP64) operations, as provided in A100." -- NVIDIA AMPERE
-// GA102 GPU ARCHITECTURE
-//
-// TESTED ON "A100 DRIVE":
-// - 1140 Mhz (`nvidia-smi -q -d CLOCK` Clocks > SM)
-// - 96 SMs
-// - 384 Tensor cores (4 TC/SM), ampere (DC /!\) TC can do 16FMA/cycle
-//
-// 1140*1e6 * 384 * 16*2 / 1e12 = 14 TFlops (double)
-
 #include <assert.h>
 #include <cstdio>
 #include <cstdlib>
