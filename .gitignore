@@ -1,8 +1,6 @@
 cutlass/
 .venv/
 .clangd
-baseline
-baseline_*
 *.csv
 cublas_dgemm
 *.ncu-rep

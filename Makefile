@@ -24,5 +24,5 @@ pipelined: $(SRC_FOLDER)/pipelined.cu
 	nvcc $(SRC_FOLDER)/pipelined.cu -o pipelined $(CFLAGS)
 
 clean:
-	rm baseline baseline_m8n8k8 baseline_m16n16k16 pipelined
+	rm baseline baseline_m8n8k8 baseline_m16n16k16 baseline_m16n16k16_4W baseline_m32n32k32 pipelined
 	rm viz.tex viz.log viz.aux viz.pdf
