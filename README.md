@@ -1,6 +1,8 @@
 # CuTe Ampere DGEMM
 
 The exact operation implemented for now is NT DGEMM: `(M,K):(K,1) @ (N,K):(K,1) = (M,N):(1, M)`, B is transposed for simplicity
+
+
 This repo doesn't work on RTX Ampere: "Note that GA10x GPUs do not include Tensor Core acceleration for double-precision (FP64) operations, as provided in A100." -- NVIDIA Ampere RTX whitepaper
 
 
