@@ -4,6 +4,5 @@ cutlass/
 baseline
 baseline_*
 *.csv
-bench.png
 cublas_dgemm
 *.ncu-rep

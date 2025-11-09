@@ -1,6 +1,8 @@
 # CuTe Ampere DGEMM
 
-![DGEMM benchmark for square matrices on A100D](./bench.png)
+<p align="center">
+  <img src="./bench.png" />
+</p>
 
 ## Requirements
 - CUDA TOOLKIT >= 12.9 (for nvcc and cublas)
