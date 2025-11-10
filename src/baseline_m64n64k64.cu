@@ -98,7 +98,7 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
               int ldc) {
     TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_8x8x4_F64F64F64F64_TN>{},
         Layout<Shape<_1, _1, _1>>{},
-        Tile<_32,_32,_32>{}
+        Tile<_64,_64,_64>{}
     );
     // TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>{});
 

@@ -58,6 +58,7 @@ __global__ void dgemm_kernel(
     ThrCopy thr_copy_a = tiled_copy_a.get_slice(threadIdx.x);
     Tensor tAgA = thr_copy_a.partition_S(gA); // (THRCPY, CPY_M, CPY_K, k)
     Tensor tAsA = thr_copy_a.partition_D(sA); // (THRCPY, CPY_M, CPY_K)
+
     ThrCopy thr_copy_b = tiled_copy_b.get_slice(threadIdx.x);
     Tensor tBgB = thr_copy_b.partition_S(gB); // (THRCPY, CPY_N, CPY_K, k)
     Tensor tBsB = thr_copy_b.partition_D(sB); // (THRCPY, CPY_N, CPY_K)
@@ -88,6 +89,7 @@ __global__ void dgemm_kernel(
 
         // call tensor core mma
         gemm(thr_mma, tCrC, tCrA, tCrB, tCrC);
+        __syncthreads();
     }
 
     // store gC = alpha*acc + beta*gC
@@ -98,7 +100,7 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
               int ldc) {
     TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_8x8x4_F64F64F64F64_TN>{},
         Layout<Shape<_2, _2>>{},
-        Tile<_8,_8,_16>{}
+        Tile<_16,_16,_16>{}
     );
     // TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>{});
 
@@ -108,18 +110,18 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // return;
 
     // compile time block sizes for tiling (FP64 tensor core shape for now)
-    auto bM = _16{};
-    auto bN = _16{};
+    auto bM = tiled_mma.tile_size_mnk<0>();
+    auto bN = tiled_mma.tile_size_mnk<1>();
     auto bK = tiled_mma.tile_size_mnk<2>();
 
     // create block shape (for blocking/tiling)
     auto cta_tiler = make_shape(bM, bN, bK);
-    print(cta_tiler);
-    print("\n");
+    // print(cta_tiler);
+    // print("\n");
 
-    // static_assert(bM == _8{}, "BM is not equal to 8");
-    // static_assert(bN == _8{}, "BN is not equal to 8");
-    // static_assert(bK == _4{}, "BK is not equal to 4");
+    static_assert(bM == _16{}, "BM is not equal to 16");
+    static_assert(bN == _16{}, "BN is not equal to 16");
+    static_assert(bK == _16{}, "BK is not equal to 16");
 
     assert(m % bM == 0 && "M has to be divisible by it's block size");
     assert(n % bN == 0 && "N has to be divisible by it's block size");
@@ -148,7 +150,7 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // print_latex(tiled_copy_a);
     // print_latex(tiled_copy_b);
     // print_latex(tiled_mma);
-    // print(tiled_copy_a);
+    // print("\n");
     // print(tiled_copy_a.get_layoutS_TV());
     // print(tiled_copy_a.get_layoutD_TV());
     // return;

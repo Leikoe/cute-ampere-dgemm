@@ -12,8 +12,12 @@ FILES = [
     "baseline_m8n8k8_128b",
     "baseline_m16n16k16",
     "baseline_m16n16k16_128b",
+    "baseline_m16n16k16_128b_4W",
     "baseline_m32n32k32",
     "baseline_m32n32k32_128b",
+    "baseline_m32n32k32_128b_4W",
+    "baseline_m64n64k64_128b",
+    "baseline_m64n64k64_128b_4W",
 ]
 y_min = float("inf")
 x_min = float("inf")
@@ -40,9 +44,9 @@ for file_name in FILES:
     plt.plot(xs, ys, label=file_name, marker="x")
 
 plt.xlim(x_min, x_max)
-plt.ylim(y_min, HARDWARE_PEAK * 1.50)
+plt.ylim(0, HARDWARE_PEAK * 1.50)
 plt.xscale("log", base=2)
-plt.yscale("log", base=2)
+# plt.yscale("log", base=2)
 plt.hlines(
     y=HARDWARE_PEAK,
     xmin=x_min,

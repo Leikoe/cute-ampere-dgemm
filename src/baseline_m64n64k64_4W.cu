@@ -58,6 +58,7 @@ __global__ void dgemm_kernel(
     ThrCopy thr_copy_a = tiled_copy_a.get_slice(threadIdx.x);
     Tensor tAgA = thr_copy_a.partition_S(gA); // (THRCPY, CPY_M, CPY_K, k)
     Tensor tAsA = thr_copy_a.partition_D(sA); // (THRCPY, CPY_M, CPY_K)
+
     ThrCopy thr_copy_b = tiled_copy_b.get_slice(threadIdx.x);
     Tensor tBgB = thr_copy_b.partition_S(gB); // (THRCPY, CPY_N, CPY_K, k)
     Tensor tBsB = thr_copy_b.partition_D(sB); // (THRCPY, CPY_N, CPY_K)
@@ -88,6 +89,7 @@ __global__ void dgemm_kernel(
 
         // call tensor core mma
         gemm(thr_mma, tCrC, tCrA, tCrB, tCrC);
+        __syncthreads();
     }
 
     // store gC = alpha*acc + beta*gC
@@ -97,8 +99,8 @@ __global__ void dgemm_kernel(
 void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const *b, int ldb, double beta, TC *c,
               int ldc) {
     TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_8x8x4_F64F64F64F64_TN>{},
-        Layout<Shape<_1, _1, _1>>{},
-        Tile<_32,_32,_32>{}
+        Layout<Shape<_2, _2>>{},
+        Tile<_64,_64,_64>{}
     );
     // TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>{});
 
@@ -117,9 +119,9 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // print(cta_tiler);
     // print("\n");
 
-    // static_assert(bM == _8{}, "BM is not equal to 8");
-    // static_assert(bN == _8{}, "BN is not equal to 8");
-    // static_assert(bK == _4{}, "BK is not equal to 4");
+    static_assert(bM == _64{}, "BM is not equal to 16");
+    static_assert(bN == _64{}, "BN is not equal to 16");
+    static_assert(bK == _64{}, "BK is not equal to 16");
 
     assert(m % bM == 0 && "M has to be divisible by it's block size");
     assert(n % bN == 0 && "N has to be divisible by it's block size");
@@ -139,16 +141,16 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // Stride<_2, _1> => f(0, 0)=0, f(0, 1) = 1
     // Stride<_1, _1> => f(0, 0)=0, f(0, 1) = 1
     TiledCopy tiled_copy_a = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TA>{},
-                                             Layout<Shape<_8, _4>, Stride<_4, _1>>{}, // Thr layout 8x2 k-major
-                                             Layout<Shape<_4, _8>, Stride<_8, _1>>{}); // Val layout 1x2 k-major
+                                             Layout<Shape<_16, _8>, Stride<_8, _1>>{}, // Thr layout 8x2 k-major
+                                             Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
     TiledCopy tiled_copy_b = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TB>{},
-                                             Layout<Shape<_8, _4>, Stride<_4, _1>>{},  // Thr layout 8x2 k-major
-                                             Layout<Shape<_4, _8>, Stride<_8, _1>>{}); // Val layout 1x2 k-major
+                                             Layout<Shape<_16, _8>, Stride<_8, _1>>{},  // Thr layout 8x2 k-major
+                                             Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
 
     // print_latex(tiled_copy_a);
     // print_latex(tiled_copy_b);
     // print_latex(tiled_mma);
-    // print(tiled_copy_a);
+    // print("\n");
     // print(tiled_copy_a.get_layoutS_TV());
     // print(tiled_copy_a.get_layoutD_TV());
     // return;
@@ -166,7 +168,8 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     cudaFuncSetAttribute(dgemm_kernel_fnptr, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
 
     dim3 grid = dim3(m / bM, n / bN);
-    dim3 block = dim3(WARP_SIZE);
+    dim3 block = dim3(size(tiled_mma));
+    static_assert(size(tiled_mma) == 4*WARP_SIZE, "tiled_mma should be using 4 warps");
     // printf("block size: %d threads\n", block.x);
     dgemm_kernel_fnptr<<<grid, block, dynamic_smem_size>>>(cta_tiler, mA, mB, mC, tiled_mma, sA_layout, sB_layout, tiled_copy_a,
                                                            tiled_copy_b, alpha, beta);
