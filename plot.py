@@ -16,6 +16,8 @@ FILES = [
     "baseline_m32n32k32",
     "baseline_m32n32k32_128b",
     "baseline_m32n32k32_128b_4W",
+    "baseline_m64n64k32_128b",
+    "baseline_m64n64k32_128b_4W",
     "baseline_m64n64k64_128b",
     "baseline_m64n64k64_128b_4W",
 ]

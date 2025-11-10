@@ -23,6 +23,12 @@ baseline_m32n32k32: $(SRC_FOLDER)/baseline_m32n32k32.cu
 baseline_m32n32k32_4W: $(SRC_FOLDER)/baseline_m32n32k32_4W.cu
 	nvcc $(SRC_FOLDER)/baseline_m32n32k32_4W.cu -o baseline_m32n32k32_4W $(CFLAGS)
 
+baseline_m64n64k32: $(SRC_FOLDER)/baseline_m64n64k32.cu
+	nvcc $(SRC_FOLDER)/baseline_m64n64k32.cu -o baseline_m64n64k32 $(CFLAGS)
+
+baseline_m64n64k32_4W: $(SRC_FOLDER)/baseline_m64n64k32_4W.cu
+	nvcc $(SRC_FOLDER)/baseline_m64n64k32_4W.cu -o baseline_m64n64k32_4W $(CFLAGS)
+
 baseline_m64n64k64: $(SRC_FOLDER)/baseline_m64n64k64.cu
 	nvcc $(SRC_FOLDER)/baseline_m64n64k64.cu -o baseline_m64n64k64 $(CFLAGS)
 
