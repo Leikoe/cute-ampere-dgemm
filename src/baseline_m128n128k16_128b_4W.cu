@@ -13,8 +13,7 @@ double alpha = 1.0;
 double beta = 0.0;
 
 constexpr int WARP_SIZE = 32;
-constexpr int N_BENCHMARK_ITERS = 1;
-constexpr int PIPELINE_STAGES = 3;
+constexpr int N_BENCHMARK_ITERS = 10;
 
 template <class ElementA, class ElementB, class SmemLayoutA, class SmemLayoutB>
 struct SharedStorage
@@ -44,28 +43,6 @@ __global__ void dgemm_kernel(
     Tensor sA = make_tensor(make_smem_ptr(smem.A.begin()), sA_layout); // (BM,BK)
     Tensor sB = make_tensor(make_smem_ptr(smem.B.begin()), sB_layout); // (BN,BK)
 
-    // setup global to shared copies
-    ThrCopy thr_copy_a = tiled_copy_a.get_slice(threadIdx.x);
-    Tensor tAgA = thr_copy_a.partition_S(gA); // (THRCPY, CPY_M, CPY_K, k)
-    Tensor tAsA = thr_copy_a.partition_D(sA); // (THRCPY, CPY_M, CPY_K)
-    ThrCopy thr_copy_b = tiled_copy_b.get_slice(threadIdx.x);
-    Tensor tBgB = thr_copy_b.partition_S(gB); // (THRCPY, CPY_N, CPY_K, k)
-    Tensor tBsB = thr_copy_b.partition_D(sB); // (THRCPY, CPY_N, CPY_K)
-
-    int nb_k_tiles = size<2>(gA);
-
-    int fetched_stages = 0;
-    // prefetch all but last stages
-    while (fetched_stages < min(PIPELINE_STAGES, nb_k_tiles)) {
-        if (blockIdx.x == 0 && blockIdx.y == 0 && threadIdx.x == 0) {
-          print("fetching!\n");
-        }
-        copy(tiled_copy_a, tAgA(_, _, _, fetched_stages), tAsA(_, _, _, fetched_stages)); // start A tile async copy from gmem into smem
-        copy(tiled_copy_b, tBgB(_, _, _, fetched_stages), tBsB(_, _, _, fetched_stages)); // start B tile async copy from gmem into smem
-        cp_async_fence();   // commit the two async loads into a group of loads
-        fetched_stages++;
-    }
-
     // partition `gA`, `gB`, `gC` by the partitioning pattern of the `tiled_mma` and create the fragments
     ThrMMA thr_mma = tiled_mma.get_slice(threadIdx.x);
     Tensor tCgA = thr_mma.partition_A(gA);                   // (THRMMA, MMA_M, MMA_K, k)
@@ -76,6 +53,15 @@ __global__ void dgemm_kernel(
     Tensor tCrC = thr_mma.make_fragment_C(tCgC);             // (THRMMA, MMA_M, MMA_N)
     // set accumulator to 0s
     clear(tCrC);
+
+    // setup global to shared copies
+    ThrCopy thr_copy_a = tiled_copy_a.get_slice(threadIdx.x);
+    Tensor tAgA = thr_copy_a.partition_S(gA); // (THRCPY, CPY_M, CPY_K, k)
+    Tensor tAsA = thr_copy_a.partition_D(sA); // (THRCPY, CPY_M, CPY_K)
+
+    ThrCopy thr_copy_b = tiled_copy_b.get_slice(threadIdx.x);
+    Tensor tBgB = thr_copy_b.partition_S(gB); // (THRCPY, CPY_N, CPY_K, k)
+    Tensor tBsB = thr_copy_b.partition_D(sB); // (THRCPY, CPY_N, CPY_K)
 
     // setup shared to registers copies
     TiledCopy s2r_copy_a = make_tiled_copy_A(s2r_atom_a, tiled_mma);
@@ -88,28 +74,22 @@ __global__ void dgemm_kernel(
     Tensor tXrB = s2r_thr_copy_b.retile_D(tCrB);  // (CPY,MMA_N,MMA_K)
 
     // MMA mainloop
-    int consumed_stages = 0;
+    int nb_k_tiles = size<2>(gA);
     for (int k_tile_idx = 0; k_tile_idx < nb_k_tiles; k_tile_idx++) {
-        cp_async_wait<PIPELINE_STAGES-1>(); // wait until 1 group of loads is ready
+        // load A/B from gmem to smem
+        copy(tiled_copy_a, tAgA(_, _, _, k_tile_idx), tAsA(_, _, _)); // start A tile async copy from gmem into smem
+        copy(tiled_copy_b, tBgB(_, _, _, k_tile_idx), tBsB(_, _, _)); // start B tile async copy from gmem into smem
+        cp_async_fence();   // commit the two async loads into a group of loads
+        cp_async_wait<0>(); // wait until 0 groups of loads are pending anymore
         __syncthreads();    // fence to make sure all threads see the smem in the same state before reading it
 
         // load A/B from smem to rmem
-        copy(s2r_atom_a, tXsA(_, _, _, consumed_stages%PIPELINE_STAGES), tXrA);
-        copy(s2r_atom_b, tXsB(_, _, _, consumed_stages%PIPELINE_STAGES), tXrB);
-        consumed_stages++;
-        __syncthreads();    // fence to make sure all threads see the smem in the same state before reading it
-
-        int free_stages = PIPELINE_STAGES - fetched_stages + consumed_stages;
-        while (free_stages > 0 && fetched_stages < nb_k_tiles) {
-            copy(tiled_copy_a, tAgA(_, _, _, fetched_stages), tAsA(_, _, _, fetched_stages%PIPELINE_STAGES)); // start A tile async copy from gmem into smem
-            copy(tiled_copy_b, tBgB(_, _, _, fetched_stages), tBsB(_, _, _, fetched_stages%PIPELINE_STAGES)); // start B tile async copy from gmem into smem
-            cp_async_fence();   // commit the two async loads into a group of loads
-            fetched_stages++;
-            free_stages = PIPELINE_STAGES - fetched_stages + consumed_stages;
-        }
+        copy(s2r_atom_a, tXsA, tXrA);
+        copy(s2r_atom_b, tXsB, tXrB);
 
         // call tensor core mma
         gemm(thr_mma, tCrC, tCrA, tCrB, tCrC);
+        __syncthreads();
     }
 
     // store gC = alpha*acc + beta*gC
@@ -118,11 +98,15 @@ __global__ void dgemm_kernel(
 
 void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const *b, int ldb, double beta, TC *c,
               int ldc) {
-    TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_8x8x4_F64F64F64F64_TN>{});
+    TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_8x8x4_F64F64F64F64_TN>{},
+        Layout<Shape<_2, _2>>{},
+        Tile<_128,_128,_16>{}
+    );
     // TiledMMA tiled_mma = make_tiled_mma(MMA_Atom<SM80_16x8x16_F16F16F16F16_TN>{});
 
     // print_latex(tiled_mma);
     // print(tiled_mma);
+    // print("\n");
     // return;
 
     // compile time block sizes for tiling (FP64 tensor core shape for now)
@@ -132,10 +116,12 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
 
     // create block shape (for blocking/tiling)
     auto cta_tiler = make_shape(bM, bN, bK);
+    // print(cta_tiler);
+    // print("\n");
 
-    // static_assert(bM == _8{}, "BM is not equal to 8");
-    // static_assert(bN == _8{}, "BN is not equal to 8");
-    // static_assert(bK == _4{}, "BK is not equal to 4");
+    // static_assert(bM == _128{}, "BM is not equal to 16");
+    // static_assert(bN == _128{}, "BN is not equal to 16");
+    // static_assert(bK == _16{}, "BK is not equal to 16");
 
     assert(m % bM == 0 && "M has to be divisible by it's block size");
     assert(n % bN == 0 && "N has to be divisible by it's block size");
@@ -154,23 +140,23 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // note that here, majorness for value layouts of shape (1,2) doesn't matter:
     // Stride<_2, _1> => f(0, 0)=0, f(0, 1) = 1
     // Stride<_1, _1> => f(0, 0)=0, f(0, 1) = 1
-    TiledCopy tiled_copy_a = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<TA>, TA>{},
-                                             Layout<Shape<_8, _4>, Stride<_4, _1>>{}, // Thr layout 8x2 k-major
-                                             Layout<Shape<_1, _1>>{}); // Val layout 1x2 k-major
-    TiledCopy tiled_copy_b = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<TB>, TB>{},
-                                             Layout<Shape<_8, _4>, Stride<_4, _1>>{},  // Thr layout 8x2 k-major
-                                             Layout<Shape<_1, _1>>{}); // Val layout 1x2 k-major
+    TiledCopy tiled_copy_a = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TA>{},
+                                             Layout<Shape<_16, _8>, Stride<_8, _1>>{}, // Thr layout 8x2 k-major
+                                             Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
+    TiledCopy tiled_copy_b = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TB>{},
+                                             Layout<Shape<_16, _8>, Stride<_8, _1>>{},  // Thr layout 8x2 k-major
+                                             Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
 
     // print_latex(tiled_copy_a);
     // print_latex(tiled_copy_b);
     // print_latex(tiled_mma);
-    // print(tiled_copy_a);
+    // print("\n");
     // print(tiled_copy_a.get_layoutS_TV());
     // print(tiled_copy_a.get_layoutD_TV());
     // return;
 
-    auto sA_layout = make_layout(make_shape(bM, bK, Int<PIPELINE_STAGES>{}), make_stride(bK, _1{}, bM*bK));
-    auto sB_layout = make_layout(make_shape(bN, bK, Int<PIPELINE_STAGES>{}), make_stride(bK, _1{}, bM*bK));
+    auto sA_layout = make_layout(make_shape(bM, bK), make_stride(bK, _1{}));
+    auto sB_layout = make_layout(make_shape(bN, bK), make_stride(bK, _1{}));
     int dynamic_smem_size = sizeof(SharedStorage<TA, TB, decltype(sA_layout), decltype(sB_layout)>);
     // printf("dynamic_smem_size: %d bytes\n", dynamic_smem_size);
 
@@ -182,8 +168,8 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     cudaFuncSetAttribute(dgemm_kernel_fnptr, cudaFuncAttributePreferredSharedMemoryCarveout, 100);
 
     dim3 grid = dim3(m / bM, n / bN);
-    dim3 block = dim3(WARP_SIZE);
-    // dim3 block = dim3(size(tiled_mma));
+    dim3 block = dim3(size(tiled_mma));
+    static_assert(size(tiled_mma) == 4*WARP_SIZE, "tiled_mma should be using 4 warps");
     // printf("block size: %d threads\n", block.x);
     dgemm_kernel_fnptr<<<grid, block, dynamic_smem_size>>>(cta_tiler, mA, mB, mC, tiled_mma, sA_layout, sB_layout, tiled_copy_a,
                                                            tiled_copy_b, alpha, beta);
@@ -196,13 +182,7 @@ void dgemm(char transa, char transb, int m, int n, int k, double alpha, TA const
     dgemm_tn(m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
 }
 
-int main() {
-    int m = 1024; // 449*8
-    int n = 1024;
-    int k = 4;
-
-    srand(42);
-
+double time_dgemm(int m, int n, int k) {
     // allocate and initialize host buffers
     TA *a_host = (TA *)std::malloc(m * k * sizeof(TA));
     TB *b_host = (TB *)std::malloc(n * k * sizeof(TB));
@@ -244,32 +224,30 @@ int main() {
 
     float elapsed_ms;
     cudaEventElapsedTime(&elapsed_ms, start, end);
-    printf("elapsed ms %f\n", elapsed_ms);
+    // printf("elapsed ms %f\n", elapsed_ms);
     double s = (double)elapsed_ms / N_BENCHMARK_ITERS / 1000.0;
-    double gflop = (2.0 * m * n * k) * 1e-9;
-    printf("%f GFLOP/S -- %.2f ms\n", gflop / s, s * 1e3);
 
-    // correctness test
-    double atol = 1e-7;
-    double rtol = 1e-7;
-    for (int i = 0; i < m; i++) {
-        for (int j = 0; j < n; j++) {
-            TC acc = (TC)0.0;
-            for (int _k = 0; _k < k; _k++) {
-                acc += a_host[i * k + _k] * b_host[j * k + _k];
-            }
-            acc *= alpha;
+    // // correctness test
+    // double atol = 1e-7;
+    // double rtol = 1e-7;
+    // for (int i = 0; i < m; i++) {
+    //     for (int j = 0; j < n; j++) {
+    //         TC acc = (TC)0.0;
+    //         for (int _k = 0; _k < k; _k++) {
+    //             acc += a_host[i * k + _k] * b_host[j * k + _k];
+    //         }
+    //         acc *= alpha;
 
-            // instead of storing, just check against kernel result
-            if (fabs(acc - c_host[i + j * m]) > atol + rtol * fabs(acc)) {
-                printf("FAILED! WRONG AT (%d,%d): expected %.20f, got %.20f "
-                       "(diff %.32f)\n",
-                       i, j, (float)acc, (float)c_host[i + j * m], fabs(acc - c_host[i + j * m]));
-                return 1;
-            }
-        }
-    }
-    printf("PASSED!\n");
+    //         // instead of storing, just check against kernel result
+    //         if (fabs(acc - c_host[i + j * m]) > atol + rtol * fabs(acc)) {
+    //             printf("FAILED! WRONG AT (%d,%d): expected %.20f, got %.20f "
+    //                    "(diff %.32f)\n",
+    //                    i, j, (float)acc, (float)c_host[i + j * m], fabs(acc - c_host[i + j * m]));
+    //             return 1;
+    //         }
+    //     }
+    // }
+    // printf("PASSED!\n");
 
     std::free(a_host);
     std::free(b_host);
@@ -277,5 +255,18 @@ int main() {
     cudaFree(a_dev);
     cudaFree(b_dev);
     cudaFree(c_dev);
+    return s;
+}
+
+int main() {
+    srand(42);
+
+    printf("M;N;K;TIME_S;GFLOPS\n");
+    for (int size = 128; size <= 8192; size *= 2) {
+        double s = time_dgemm(size, size, size);
+        double gflop = (2.0 * size * size * size) * 1e-9;
+        // printf("%f GFLOP/S -- %.2f ms\n", gflop / s, s * 1e3);
+        printf("%d;%d;%d;%f;%f\n", size, size, size, s, gflop / s);
+    }
     return 0;
 }

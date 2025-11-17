@@ -1,26 +1,26 @@
 import csv
-import itertools
 
 import matplotlib.pyplot as plt
 
 HARDWARE_PEAK = 14000  # 14TF max for A100D
 
 FILES = [
-    "cublas",
     "baseline",
+    "cublas",
     "baseline_m8n8k8",
     "baseline_m8n8k8_128b",
-    "baseline_m16n16k16",
     "baseline_m16n16k16_128b",
     "baseline_m16n16k16_128b_4W",
-    "baseline_m32n32k32",
     "baseline_m32n32k32_128b",
     "baseline_m32n32k32_128b_4W",
     "baseline_m64n64k32_128b",
     "baseline_m64n64k32_128b_4W",
     "baseline_m64n64k64_128b",
     "baseline_m64n64k64_128b_4W",
+    "baseline_m128n64k16_128b_4W",
+    "baseline_m128n128k16_128b_4W",
 ]
+
 y_min = float("inf")
 x_min = float("inf")
 x_max = float("-inf")

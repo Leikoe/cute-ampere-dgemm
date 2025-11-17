@@ -151,10 +151,10 @@ void dgemm_tn(int m, int n, int k, double alpha, TA const *a, int lda, TB const 
     // note that here, majorness for value layouts of shape (1,2) doesn't matter:
     // Stride<_2, _1> => f(0, 0)=0, f(0, 1) = 1
     // Stride<_1, _1> => f(0, 0)=0, f(0, 1) = 1
-    TiledCopy tiled_copy_a = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TA>{},
+    TiledCopy tiled_copy_a = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<TA>, TA>{},
                                              Layout<Shape<_8, _4>, Stride<_4, _1>>{}, // Thr layout 8x2 k-major
                                              Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
-    TiledCopy tiled_copy_b = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<uint128_t>, TB>{},
+    TiledCopy tiled_copy_b = make_tiled_copy(Copy_Atom<SM80_CP_ASYNC_CACHEALWAYS<TB>, TB>{},
                                              Layout<Shape<_8, _4>, Stride<_4, _1>>{},  // Thr layout 8x2 k-major
                                              Layout<Shape<_1, _2>>{}); // Val layout 1x2 k-major
 
