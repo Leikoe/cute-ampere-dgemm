@@ -2,22 +2,30 @@ import csv
 
 import matplotlib.pyplot as plt
 
+plt.rcParams["figure.figsize"] = (10, 10)
+
 HARDWARE_PEAK = 14000  # 14TF max for A100D
 
 FILES = [
     "baseline",
     "cublas",
+
     "baseline_m8n8k8",
     "baseline_m8n8k8_128b",
+
     "baseline_m16n16k16_128b",
     "baseline_m16n16k16_128b_4W",
-    "baseline_m32n32k32_128b",
-    "baseline_m32n32k32_128b_4W",
+
+    #"baseline_m32n32k32_128b",
+    #"baseline_m32n32k32_128b_4W",
     "baseline_m64n64k32_128b",
     "baseline_m64n64k32_128b_4W",
-    "baseline_m64n64k64_128b",
-    "baseline_m64n64k64_128b_4W",
+    "baseline_m64n64k32_128b_4W_CG",
+
+    #"baseline_m64n64k64_128b",
+    #"baseline_m64n64k64_128b_4W",
     "baseline_m128n64k16_128b_4W",
+    "baseline_m128n64k16_128b_4W_CG",
     "baseline_m128n128k16_128b_4W",
 ]
 
@@ -63,4 +71,4 @@ plt.legend()
 xticks = sorted(list(xticks_set))
 # plt.axes().set_xticks(xticks)
 plt.xticks(xticks, xticks)
-plt.savefig("bench.png")
+plt.savefig("bench.png", dpi=600)

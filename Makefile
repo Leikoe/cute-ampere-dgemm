@@ -34,6 +34,9 @@ baseline_m64n64k32_128b: $(SRC_FOLDER)/baseline_m64n64k32_128b.cu
 baseline_m64n64k32_128b_4W: $(SRC_FOLDER)/baseline_m64n64k32_128b_4W.cu
 	nvcc $(SRC_FOLDER)/baseline_m64n64k32_128b_4W.cu -o baseline_m64n64k32_128b_4W $(CFLAGS)
 
+baseline_m64n64k32_128b_4W_CG: $(SRC_FOLDER)/baseline_m64n64k32_128b_4W_CG.cu
+	nvcc $(SRC_FOLDER)/baseline_m64n64k32_128b_4W_CG.cu -o baseline_m64n64k32_128b_4W_CG $(CFLAGS)
+
 baseline_m64n64k64_128b: $(SRC_FOLDER)/baseline_m64n64k64_128b.cu
 	nvcc $(SRC_FOLDER)/baseline_m64n64k64_128b.cu -o baseline_m64n64k64_128b $(CFLAGS)
 
@@ -42,6 +45,9 @@ baseline_m64n64k64_128b_4W: $(SRC_FOLDER)/baseline_m64n64k64_128b_4W.cu
 
 baseline_m128n64k16_128b_4W: $(SRC_FOLDER)/baseline_m128n64k16_128b_4W.cu
 	nvcc $(SRC_FOLDER)/baseline_m128n64k16_128b_4W.cu -o baseline_m128n64k16_128b_4W $(CFLAGS)
+
+baseline_m128n64k16_128b_4W_CG: $(SRC_FOLDER)/baseline_m128n64k16_128b_4W_CG.cu
+	nvcc $(SRC_FOLDER)/baseline_m128n64k16_128b_4W_CG.cu -o baseline_m128n64k16_128b_4W_CG $(CFLAGS)
 
 baseline_m128n128k16_128b_4W: $(SRC_FOLDER)/baseline_m128n128k16_128b_4W.cu
 	nvcc $(SRC_FOLDER)/baseline_m128n128k16_128b_4W.cu -o baseline_m128n128k16_128b_4W $(CFLAGS)

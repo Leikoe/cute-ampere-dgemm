@@ -27,3 +27,14 @@ make baseline
 ./baseline > baseline.csv
 ./plot
 ```
+
+
+## Tricks used
+
+- tile for CTAs
+- use tensor core
+- use async copies for loading A/B in parallel
+- use 128bit copies (vectorized loads)
+- use 2x2 warps per CTA
+- tweak the tile for the CTA
+- only cache at L2, NOT L1 since we only load each tile once per SM
